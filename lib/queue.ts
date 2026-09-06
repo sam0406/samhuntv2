@@ -151,25 +151,44 @@ export async function completeChunk(
       last_checkpoint = ${checkpoint ?? null},
       throughput = ${throughput ?? null},
       completed_at = NOW()
-    WHERE id = ${chunkId}
+    WHERE
+      id = ${chunkId}
+      AND status = 'running'
     RETURNING job_id
   `;
 
-  const row = rows[0] as { job_id: string } | undefined;
+  const row = rows[0] as
+    | { job_id: string }
+    | undefined;
 
-  if (row) {
-    await writeLog({
-      jobId: row.job_id,
-      chunkId,
-      event: "chunk_completed",
-      message: "Chunk completed",
-      details: {
-        processed,
-        checkpoint: checkpoint ?? null,
-        throughput: throughput ?? null
-      }
-    });
+  if (!row) {
+    throw new Error(
+      `Chunk ${chunkId} could not be completed`
+    );
   }
+
+  // Increment the job's completed-chunk count
+  // atomically. This is safe when multiple workers
+  // finish chunks concurrently.
+  await sql`
+    UPDATE jobs
+    SET
+      completed_chunks = completed_chunks + 1,
+      updated_at = NOW()
+    WHERE id = ${row.job_id}
+  `;
+
+  await writeLog({
+    jobId: row.job_id,
+    chunkId,
+    event: "chunk_completed",
+    message: "Chunk completed",
+    details: {
+      processed,
+      checkpoint: checkpoint ?? null,
+      throughput: throughput ?? null
+    }
+  });
 }
 
 export async function failChunk(
