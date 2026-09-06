@@ -1,5 +1,5 @@
 "use client";
-
+import WorkerControls from "@/components/WorkerControls";
 import { useEffect, useState } from "react";
 
 interface Job {
