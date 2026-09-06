@@ -87,11 +87,8 @@ export default function DashboardPage() {
       )}
 
       {jobs.length > 0 && (
-        <div
-          style={{
-            overflowX: "auto",
-            marginTop: 25
-          }}
+          <JobList jobs={jobs} />
+      )}
         >
           <table
             style={{
