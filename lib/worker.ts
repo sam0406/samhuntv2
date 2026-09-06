@@ -180,7 +180,6 @@ export async function runWorker({
         await updateJobProgress(
           jobId,
           stepSize,
-          0,
           checkpoint.toString()
         );
       }
