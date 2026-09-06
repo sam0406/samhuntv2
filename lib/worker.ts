@@ -1,5 +1,9 @@
-import { claimNextChunk, completeChunk, failChunk } from "@/lib/queue";
-import { getJob, updateJobProgress } from "@/lib/jobs";
+import { claimNextChunk, completeChunk } from "@/lib/queue";
+import {
+  getJob,
+  updateJobProgress,
+  updateJobStatus
+} from "@/lib/jobs";
 import { writeLog } from "@/lib/logger";
 
 interface WorkerOptions {
@@ -16,13 +20,12 @@ interface WorkerResult {
 }
 
 function benchmarkOperation(value: bigint): bigint {
-  // Deterministic CPU workload used only to benchmark the worker.
   let result = value;
 
   for (let i = 0; i < 32; i++) {
     result ^= result << 7n;
     result ^= result >> 9n;
-    result &= ((1n << 256n) - 1n);
+    result &= (1n << 256n) - 1n;
   }
 
   return result;
@@ -42,7 +45,24 @@ export async function runWorker({
     throw new Error("maxSteps must be greater than zero");
   }
 
-  const workerStart = Date.now();
+  const job = await getJob(jobId);
+
+  if (!job) {
+    throw new Error(`Job ${jobId} not found`);
+  }
+
+  if (
+    job.status === "paused" ||
+    job.status === "stopped" ||
+    job.status === "completed" ||
+    job.status === "failed"
+  ) {
+    throw new Error(
+      `Job cannot run while status is "${job.status}"`
+    );
+  }
+
+  await updateJobStatus(jobId, "running");
 
   await writeLog({
     jobId,
@@ -55,39 +75,33 @@ export async function runWorker({
     }
   });
 
+  const workerStart = Date.now();
+
   let chunksProcessed = 0;
   let totalOperations = 0;
   let steps = 0;
 
   try {
     while (steps < maxSteps) {
-      const job = await getJob(jobId);
+      const currentJob = await getJob(jobId);
 
-      if (!job) {
-        throw new Error(`Job ${jobId} not found`);
+      if (!currentJob) {
+        throw new Error(`Job ${jobId} no longer exists`);
       }
 
       if (
-        job.status === "paused" ||
-        job.status === "stopped" ||
-        job.status === "failed" ||
-        job.status === "completed"
+        currentJob.status === "paused" ||
+        currentJob.status === "stopped"
       ) {
         break;
       }
 
-      const chunk = await claimNextChunk(jobId, workerId);
+      const chunk = await claimNextChunk(
+        jobId,
+        workerId
+      );
 
       if (!chunk) {
-        await writeLog({
-          jobId,
-          event: "worker_idle",
-          message: "No queued chunks available",
-          details: {
-            workerId
-          }
-        });
-
         break;
       }
 
@@ -101,22 +115,27 @@ export async function runWorker({
 
       while (current <= chunkEnd) {
         const remaining = chunkEnd - current + 1n;
+
         const stepSize =
           remaining < BigInt(operationsPerStep)
             ? Number(remaining)
             : operationsPerStep;
 
         for (let i = 0; i < stepSize; i++) {
-          benchmarkOperation(current + BigInt(i));
+          benchmarkOperation(
+            current + BigInt(i)
+          );
         }
 
         current += BigInt(stepSize);
         processed += stepSize;
         totalOperations += stepSize;
+        steps++;
 
-        const checkpoint = current > chunkEnd
-          ? chunkEnd.toString()
-          : (current - 1n).toString();
+        const checkpoint =
+          current > chunkEnd
+            ? chunkEnd.toString()
+            : (current - 1n).toString();
 
         await updateJobProgress(
           jobId,
@@ -124,8 +143,6 @@ export async function runWorker({
           chunksProcessed,
           checkpoint
         );
-
-        steps++;
 
         if (steps >= maxSteps) {
           break;
@@ -149,37 +166,23 @@ export async function runWorker({
         );
 
         chunksProcessed++;
-
-        await writeLog({
-          jobId,
-          chunkId: chunk.id,
-          event: "worker_chunk_finished",
-          message: `Worker finished chunk ${chunk.chunk_index}`,
-          details: {
-            workerId,
-            processed,
-            throughput
-          }
-        });
       } else {
-        await writeLog({
-          jobId,
-          chunkId: chunk.id,
-          event: "worker_step_limit",
-          message: "Worker stopped before chunk completion",
-          details: {
-            workerId,
-            processed,
-            checkpoint: (current - 1n).toString()
-          }
-        });
-
         break;
       }
     }
 
-    const elapsedSeconds =
-      (Date.now() - workerStart) / 1000;
+    const finalJob = await getJob(jobId);
+
+    if (
+      finalJob &&
+      finalJob.completed_chunks >=
+        finalJob.total_chunks
+    ) {
+      await updateJobStatus(
+        jobId,
+        "completed"
+      );
+    }
 
     await writeLog({
       jobId,
@@ -189,7 +192,8 @@ export async function runWorker({
         workerId,
         chunksProcessed,
         operations: totalOperations,
-        elapsedSeconds
+        elapsedSeconds:
+          (Date.now() - workerStart) / 1000
       }
     });
 
@@ -213,6 +217,12 @@ export async function runWorker({
         workerId
       }
     });
+
+    await updateJobStatus(
+      jobId,
+      "failed",
+      { error: message }
+    );
 
     throw error;
   }
