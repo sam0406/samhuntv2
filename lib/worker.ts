@@ -138,10 +138,10 @@ export async function runWorker({
             : (current - 1n).toString();
 
         await updateJobProgress(
-  jobId,
-  stepSize,
-  chunksProcessed,
-  checkpoint
+              jobId,
+              stepSize,
+              0,
+              checkpoint
 );
 
         if (steps >= maxSteps) {
