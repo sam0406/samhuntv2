@@ -300,6 +300,8 @@ export default function JobDetailsPage({
         </div>
       </section>
 
+      <WorkerControls jobId={job.id} />
+
       <section style={cardStyle}>
         <h2>Chunks</h2>
 
