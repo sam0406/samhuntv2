@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import JobList from "@/components/JobList";
 
 interface Job {
   id: string;
