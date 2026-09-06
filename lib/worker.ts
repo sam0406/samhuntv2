@@ -138,11 +138,11 @@ export async function runWorker({
             : (current - 1n).toString();
 
         await updateJobProgress(
-          jobId,
-          totalOperations,
-          chunksProcessed,
-          checkpoint
-        );
+  jobId,
+  stepSize,
+  chunksProcessed,
+  checkpoint
+);
 
         if (steps >= maxSteps) {
           break;
