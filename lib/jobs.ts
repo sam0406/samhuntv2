@@ -204,15 +204,26 @@ export async function updateJobStatus(
 
 export async function updateJobProgress(
   jobId: string,
-  processed: number,
+  processedDelta: number,
   completedChunks: number,
   checkpoint?: string | null
 ): Promise<void> {
+  if (!Number.isSafeInteger(processedDelta) || processedDelta < 0) {
+    throw new Error("processedDelta must be a non-negative safe integer");
+  }
+
+  if (!Number.isSafeInteger(completedChunks) || completedChunks < 0) {
+    throw new Error("completedChunks must be a non-negative safe integer");
+  }
+
   await sql`
     UPDATE jobs
     SET
-      processed = ${processed},
-      completed_chunks = ${completedChunks},
+      processed = processed + ${processedDelta},
+      completed_chunks = GREATEST(
+        completed_chunks,
+        ${completedChunks}
+      ),
       last_checkpoint = COALESCE(
         ${checkpoint ?? null},
         last_checkpoint
