@@ -23,7 +23,9 @@ export default function HomePage() {
   const [message, setMessage] = useState("");
   const [job, setJob] = useState<CreatedJob | null>(null);
 
-  async function createBenchmarkJob(event: FormEvent<HTMLFormElement>) {
+  async function createBenchmarkJob(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setLoading(true);
@@ -47,11 +49,15 @@ export default function HomePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Failed to create job");
+        throw new Error(
+          data.error ?? "Failed to create job"
+        );
       }
 
       setJob(data.job);
-      setMessage("Benchmark job created successfully.");
+      setMessage(
+        "Benchmark job created successfully."
+      );
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -93,6 +99,7 @@ export default function HomePage() {
         >
           <label>
             Puzzle
+
             <select
               disabled
               value="69"
@@ -111,6 +118,7 @@ export default function HomePage() {
 
           <label>
             Range start
+
             <input
               value={rangeStart}
               onChange={(event) =>
@@ -128,6 +136,7 @@ export default function HomePage() {
 
           <label>
             Range end
+
             <input
               value={rangeEnd}
               onChange={(event) =>
@@ -145,6 +154,7 @@ export default function HomePage() {
 
           <label>
             Chunk size
+
             <input
               type="number"
               min="1"
@@ -166,7 +176,9 @@ export default function HomePage() {
             disabled={loading}
             style={{
               padding: "12px 18px",
-              cursor: loading ? "wait" : "pointer"
+              cursor: loading
+                ? "wait"
+                : "pointer"
             }}
           >
             {loading
@@ -207,9 +219,21 @@ export default function HomePage() {
               <strong>Total chunks:</strong>{" "}
               {job.total_chunks}
             </p>
+
+            <p>
+              <a href={`/dashboard/${job.id}`}>
+                Open Job →
+              </a>
+            </p>
           </div>
         </section>
       )}
+
+      <section style={{ marginTop: 35 }}>
+        <a href="/dashboard">
+          View Dashboard →
+        </a>
+      </section>
     </main>
   );
 }
