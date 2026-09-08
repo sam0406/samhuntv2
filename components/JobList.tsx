@@ -1,119 +1,189 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
 interface Job {
   id: string;
   puzzle_id: number | null;
   status: string;
+  range_start: string;
+  range_end: string;
+  chunk_size: number;
   total_chunks: number;
   completed_chunks: number;
-  processed: number;
+  processed: string;
+  started_at: string | null;
+  finished_at: string | null;
   last_checkpoint: string | null;
+  stop_reason: string | null;
+  error: string | null;
+  created_at: string;
   updated_at: string;
 }
 
-interface JobListProps {
-  jobs: Job[];
+function formatNumber(value: string | number): string {
+  try {
+    return new Intl.NumberFormat("en-US").format(BigInt(value));
+  } catch {
+    return String(value);
+  }
 }
 
-export default function JobList({
-  jobs
-}: JobListProps) {
-  if (jobs.length === 0) {
-    return <p>No jobs created yet.</p>;
+export default function JobList() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadJobs() {
+    try {
+      const response = await fetch("/api/jobs", {
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ?? "Failed to load jobs",
+        );
+      }
+
+      setJobs(data.jobs ?? []);
+      setError(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadJobs();
+
+    const interval = window.setInterval(loadJobs, 5000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="job-card">
+        <h2>Jobs</h2>
+        <p>Loading jobs…</p>
+      </section>
+    );
   }
 
   return (
-    <div
-      style={{
-        overflowX: "auto",
-        marginTop: 25
-      }}
-    >
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse"
-        }}
-      >
-        <thead>
-          <tr>
-            <th style={cellStyle}>Job</th>
-            <th style={cellStyle}>Puzzle</th>
-            <th style={cellStyle}>Status</th>
-            <th style={cellStyle}>Progress</th>
-            <th style={cellStyle}>Processed</th>
-            <th style={cellStyle}>Checkpoint</th>
-            <th style={cellStyle}>Updated</th>
-            <th style={cellStyle}>Action</th>
-          </tr>
-        </thead>
+    <section className="job-card">
+      <div className="section-header">
+        <div>
+          <h2>Jobs</h2>
+          <p className="section-description">
+            Benchmark jobs and their current execution state.
+          </p>
+        </div>
 
-        <tbody>
+        <button
+          type="button"
+          onClick={loadJobs}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="error-box">
+          {error}
+        </div>
+      )}
+
+      {jobs.length === 0 ? (
+        <p>No jobs have been created yet.</p>
+      ) : (
+        <div className="job-list">
           {jobs.map((job) => {
             const progress =
               job.total_chunks > 0
                 ? Math.round(
                     (job.completed_chunks /
                       job.total_chunks) *
-                      100
+                      100,
                   )
                 : 0;
 
             return (
-              <tr key={job.id}>
-                <td style={cellStyle}>
-                  <code>
-                    {job.id.slice(0, 8)}
-                  </code>
-                </td>
+              <Link
+                key={job.id}
+                href={`/dashboard/${job.id}`}
+                className="job-list-item"
+              >
+                <div className="job-list-main">
+                  <strong>
+                    Puzzle {job.puzzle_id ?? "Benchmark"}
+                  </strong>
 
-                <td style={cellStyle}>
-                  {job.puzzle_id ?? "-"}
-                </td>
+                  <span className="job-id">
+                    {job.id}
+                  </span>
+                </div>
 
-                <td style={cellStyle}>
-                  {job.status}
-                </td>
+                <div className="job-list-status">
+                  <span className={`status status-${job.status}`}>
+                    {job.status}
+                  </span>
+                </div>
 
-                <td style={cellStyle}>
-                  {job.completed_chunks}/
-                  {job.total_chunks}
-                  {" "}
-                  ({progress}%)
-                </td>
+                <div className="job-list-progress">
+                  <div className="progress-bar">
+                    <div
+                      className="progress-bar-fill"
+                      style={{
+                        width: `${progress}%`,
+                      }}
+                    />
+                  </div>
 
-                <td style={cellStyle}>
-                  {job.processed}
-                </td>
+                  <span>
+                    {job.completed_chunks} /{" "}
+                    {job.total_chunks} chunks
+                  </span>
+                </div>
 
-                <td style={cellStyle}>
-                  <code>
-                    {job.last_checkpoint ?? "-"}
-                  </code>
-                </td>
+                <div className="job-list-details">
+                  <span>
+                    Processed:{" "}
+                    {formatNumber(job.processed)}
+                  </span>
 
-                <td style={cellStyle}>
-                  {new Date(
-                    job.updated_at
-                  ).toLocaleString()}
-                </td>
+                  <span>
+                    Range:{" "}
+                    {job.range_start} → {job.range_end}
+                  </span>
 
-                <td style={cellStyle}>
-                  <a href={`/dashboard/${job.id}`}>
-                    View
-                  </a>
-                </td>
-              </tr>
+                  {job.last_checkpoint && (
+                    <span>
+                      Checkpoint:{" "}
+                      {job.last_checkpoint}
+                    </span>
+                  )}
+                </div>
+
+                {job.error && (
+                  <div className="job-list-error">
+                    {job.error}
+                  </div>
+                )}
+              </Link>
             );
           })}
-        </tbody>
-      </table>
-    </div>
+        </div>
+      )}
+    </section>
   );
 }
-
-const cellStyle = {
-  border: "1px solid #ccc",
-  padding: "10px",
-  textAlign: "left" as const
-};
