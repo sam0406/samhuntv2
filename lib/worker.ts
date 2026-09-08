@@ -1,11 +1,11 @@
 import { randomUUID } from "crypto";
-import { getJob, updateJobProgress, updateJobStatus } from "@/lib/jobs";
+import { getJob, updateJobStatus } from "@/lib/jobs";
 import {
   claimNextChunk,
   completeChunk,
   recoverStaleChunks,
   releaseChunk,
-  updateChunkProgress,
+  updateProgressAtomically,
 } from "@/lib/queue";
 import { writeLog } from "@/lib/logger";
 
@@ -215,6 +215,16 @@ export async function runWorker({
           ? Number(remaining)
           : operationsPerStep;
 
+      if (operationsThisStep <= 0) {
+        await completeChunk(
+          chunk.id,
+          chunk.last_checkpoint,
+        );
+
+        steps += 1;
+        continue;
+      }
+
       const stepStarted = Date.now();
 
       for (let i = 0; i < operationsThisStep; i += 1) {
@@ -235,17 +245,16 @@ export async function runWorker({
           ? (chunkStart + processedInChunk - 1n).toString()
           : chunkStart.toString();
 
-      await updateChunkProgress(
+      /*
+       * Chunk progress and job progress are deliberately updated
+       * together. If either update fails, neither is committed.
+       */
+      await updateProgressAtomically(
         chunk.id,
+        workerId,
         operationsThisStep,
         checkpoint,
         throughput,
-      );
-
-      await updateJobProgress(
-        jobId,
-        operationsThisStep,
-        checkpoint,
       );
 
       totalProcessed += BigInt(operationsThisStep);
@@ -273,10 +282,6 @@ export async function runWorker({
           chunkFinished,
         },
       });
-
-      if (chunkFinished) {
-        continue;
-      }
     }
 
     const finalJob = await getJob(jobId);
@@ -299,7 +304,8 @@ export async function runWorker({
           completedJob?.processed ?? finalJob.processed,
         ),
         completedChunks:
-          completedJob?.completed_chunks ?? finalJob.completed_chunks,
+          completedJob?.completed_chunks ??
+          finalJob.completed_chunks,
         totalChunks: finalJob.total_chunks,
         status: "completed",
         message: "All benchmark chunks completed",
