@@ -1,38 +1,49 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { runWorker } from "@/lib/worker";
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
+
+interface RouteContext {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
 export async function POST(
-  _request: NextRequest,
-  context: RouteContext
+  _request: Request,
+  { params }: RouteContext,
 ) {
-  try {
-    const { id } = await context.params;
-    if (!id) {
-      return NextResponse.json(
-        { ok: false, error: "Missing job id" },
-        { status: 400 }
-      );
-    }
-    const result = await runWorker({
-      jobId: id,
-    });
-    return NextResponse.json({
-      ok: true,
-      worker: result,
-    });
-  } catch (error) {
-    console.error("Worker execution failed:", error);
+  const { id } = await params;
+
+  if (!id) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Worker execution failed",
+        error: "Job ID is required",
       },
-      { status: 500 }
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await runWorker({
+      jobId: id,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
     );
   }
 }
