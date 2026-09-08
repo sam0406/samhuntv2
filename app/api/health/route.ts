@@ -2,17 +2,19 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
 export async function GET() {
+  const startedAt = Date.now();
+
   try {
     const result = await sql`
-      SELECT NOW() AS database_time
+      SELECT NOW() AS server_time
     `;
 
     return NextResponse.json({
       ok: true,
-      service: "samhuntv2",
+      status: "healthy",
       database: "connected",
-      databaseTime: result[0]?.database_time ?? null,
-      timestamp: new Date().toISOString()
+      serverTime: result[0]?.server_time ?? null,
+      responseTimeMs: Date.now() - startedAt,
     });
   } catch (error) {
     const message =
@@ -23,11 +25,12 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        service: "samhuntv2",
+        status: "unhealthy",
         database: "disconnected",
-        error: message
+        error: message,
+        responseTimeMs: Date.now() - startedAt,
       },
-      { status: 500 }
+      { status: 503 },
     );
   }
 }
