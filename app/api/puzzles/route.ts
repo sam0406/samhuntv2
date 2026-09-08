@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
-import { listPuzzleFixtures } from "@/lib/puzzles";
+import { getPuzzleFixtures } from "@/lib/puzzles";
 
 export async function GET() {
   try {
-    const puzzles = listPuzzleFixtures().map((puzzle) => ({
-      id: puzzle.id,
-      name: puzzle.name,
-      address: puzzle.address,
-      rangeStart: puzzle.rangeStart,
-      rangeEnd: puzzle.rangeEnd
-    }));
+    const puzzles = getPuzzleFixtures();
 
-    return NextResponse.json({ puzzles });
+    return NextResponse.json({
+      ok: true,
+      puzzles,
+    });
   } catch (error) {
     const message =
       error instanceof Error
@@ -19,8 +16,11 @@ export async function GET() {
         : String(error);
 
     return NextResponse.json(
-      { error: message },
-      { status: 500 }
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
     );
   }
 }
