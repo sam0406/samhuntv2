@@ -19,7 +19,7 @@ interface UpdateJobStatusOptions {
 function calculateTotalChunks(
   rangeStart: string,
   rangeEnd: string,
-  chunkSize: number
+  chunkSize: number,
 ): number {
   const start = BigInt(rangeStart);
   const end = BigInt(rangeEnd);
@@ -27,17 +27,18 @@ function calculateTotalChunks(
 
   if (end < start) {
     throw new Error(
-      "rangeEnd must be greater than or equal to rangeStart"
+      "rangeEnd must be greater than or equal to rangeStart",
     );
   }
 
   if (size <= 0n) {
     throw new Error(
-      "chunkSize must be greater than zero"
+      "chunkSize must be greater than zero",
     );
   }
 
   const count = end - start + 1n;
+
   const chunks =
     (count + size - 1n) / size;
 
@@ -46,7 +47,7 @@ function calculateTotalChunks(
     BigInt(Number.MAX_SAFE_INTEGER)
   ) {
     throw new Error(
-      "Too many chunks for JavaScript number representation"
+      "Too many chunks for JavaScript number representation",
     );
   }
 
@@ -54,13 +55,13 @@ function calculateTotalChunks(
 }
 
 function validateProcessedDelta(
-  processedDelta: number | string
+  processedDelta: number | string,
 ): bigint {
   const value = BigInt(processedDelta);
 
   if (value < 0n) {
     throw new Error(
-      "processedDelta cannot be negative"
+      "processedDelta cannot be negative",
     );
   }
 
@@ -77,7 +78,7 @@ export async function createJob({
     calculateTotalChunks(
       rangeStart,
       rangeEnd,
-      chunkSize
+      chunkSize,
     );
 
   const jobId = randomUUID();
@@ -143,7 +144,7 @@ export async function createJob({
 }
 
 export async function getJob(
-  jobId: string
+  jobId: string,
 ): Promise<Job | null> {
   const rows = await sql`
     SELECT
@@ -178,7 +179,7 @@ export async function getJob(
 export async function updateJobStatus(
   jobId: string,
   status: JobStatus,
-  options: UpdateJobStatusOptions = {}
+  options: UpdateJobStatusOptions = {},
 ): Promise<Job | null> {
   const stopReason =
     options.stopReason ?? null;
@@ -289,11 +290,11 @@ export async function updateJobStatus(
 export async function updateJobProgress(
   jobId: string,
   processedDelta: number | string,
-  checkpoint?: string | null
+  checkpoint?: string | null,
 ): Promise<void> {
   const delta =
     validateProcessedDelta(
-      processedDelta
+      processedDelta,
     );
 
   const checkpointValue =
@@ -303,7 +304,7 @@ export async function updateJobProgress(
     UPDATE jobs
     SET
       processed =
-        processed + ${delta},
+        processed + ${delta.toString()}::bigint,
 
       last_checkpoint =
         CASE
