@@ -1,28 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getJob,
-  updateJobStatus
-} from "@/lib/jobs";
+import { getJob, updateJobStatus } from "@/lib/jobs";
 import { getJobLogs } from "@/lib/logger";
-interface RouteContext {
-  params: Promise<{
-    id: string;
-  }>;
-}
-const controllableStatuses = [
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+const allowedStatuses = [
+  "queued",
+  "running",
   "paused",
-  "stopped"
+  "completed",
+  "failed",
+  "stopped",
 ] as const;
-function isControllableStatus(
-  value: unknown
-): value is (typeof controllableStatuses)[number] {
-  return (
-    typeof value === "string" &&
-    controllableStatuses.includes(
-      value as (typeof controllableStatuses)[number]
-    )
-  );
-}
+type JobStatus = (typeof allowedStatuses)[number];
+const transitions: Record<JobStatus, JobStatus[]> = {
+  queued: ["running", "paused", "stopped"],
+  running: ["paused", "stopped", "completed", "failed"],
+  paused: ["running", "stopped"],
+  completed: [],
+  failed: [],
+  stopped: [],
+};
 export async function GET(
   _request: NextRequest,
   context: RouteContext
@@ -32,25 +30,26 @@ export async function GET(
     const job = await getJob(id);
     if (!job) {
       return NextResponse.json(
-        { error: "Job not found" },
+        { ok: false, error: "Job not found" },
         { status: 404 }
       );
     }
-    const logs = await getJobLogs(
-      id,
-      100
-    );
+    const logs = await getJobLogs(id, 100);
     return NextResponse.json({
+      ok: true,
       job,
-      logs
+      logs,
     });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : String(error);
+    console.error("Failed to get job:", error);
     return NextResponse.json(
-      { error: message },
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get job",
+      },
       { status: 500 }
     );
   }
@@ -62,17 +61,15 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const requestedStatus =
-      body.status;
+    const requestedStatus = body?.status;
     if (
-      !isControllableStatus(
-        requestedStatus
-      )
+      typeof requestedStatus !== "string" ||
+      !allowedStatuses.includes(requestedStatus as JobStatus)
     ) {
       return NextResponse.json(
         {
-          error:
-            "Invalid status. Only paused and stopped can be requested through this endpoint."
+          ok: false,
+          error: "Invalid job status",
         },
         { status: 400 }
       );
@@ -80,54 +77,42 @@ export async function PATCH(
     const job = await getJob(id);
     if (!job) {
       return NextResponse.json(
-        { error: "Job not found" },
+        { ok: false, error: "Job not found" },
         { status: 404 }
       );
     }
-    if (
-      job.status === "completed" ||
-      job.status === "failed"
-    ) {
+    const currentStatus = job.status as JobStatus;
+    const nextStatus = requestedStatus as JobStatus;
+    if (currentStatus === nextStatus) {
+      return NextResponse.json({
+        ok: true,
+        job,
+      });
+    }
+    if (!transitions[currentStatus].includes(nextStatus)) {
       return NextResponse.json(
         {
-          error:
-            `Job cannot be changed because it is already ${job.status}`
+          ok: false,
+          error: `Invalid status transition: ${currentStatus} → ${nextStatus}`,
         },
         { status: 409 }
       );
     }
-    if (
-      job.status === requestedStatus
-    ) {
-      return NextResponse.json({
-        job
-      });
-    }
-    const stopReason =
-      requestedStatus === "stopped"
-        ? String(
-            body.reason ??
-              "Stopped by user"
-          )
-        : null;
-    const updatedJob =
-      await updateJobStatus(
-        id,
-        requestedStatus,
-        {
-          stopReason
-        }
-      );
+    const updatedJob = await updateJobStatus(id, nextStatus);
     return NextResponse.json({
-      job: updatedJob
+      ok: true,
+      job: updatedJob,
     });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : String(error);
+    console.error("Failed to update job:", error);
     return NextResponse.json(
-      { error: message },
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update job",
+      },
       { status: 500 }
     );
   }
