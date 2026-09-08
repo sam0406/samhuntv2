@@ -36,9 +36,10 @@ export async function GET(
       puzzle: {
         id: puzzle.id,
         name: puzzle.name,
-        address: puzzle.address,
+        description: puzzle.description,
         rangeStart: puzzle.rangeStart,
-        rangeEnd: puzzle.rangeEnd
+        rangeEnd: puzzle.rangeEnd,
+        benchmark: puzzle.benchmark
       }
     });
   } catch (error) {
