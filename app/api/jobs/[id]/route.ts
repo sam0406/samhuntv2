@@ -1,160 +1,196 @@
-import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { NextResponse } from "next/server";
 import { getJob, updateJobStatus } from "@/lib/jobs";
-import { getJobLogs } from "@/lib/logger";
+import { getChunksForJob } from "@/lib/queue";
+import { sql } from "@/lib/db";
+import type { JobStatus } from "@/lib/types";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
+interface RouteContext {
+  params: Promise<{
+    id: string;
+  }>;
+}
 
-const allowedStatuses = [
-  "queued",
-  "running",
-  "paused",
-  "completed",
-  "failed",
-  "stopped",
-] as const;
+function serializeJob(job: any) {
+  return {
+    ...job,
+    processed: String(job.processed),
+    total_chunks: Number(job.total_chunks),
+    completed_chunks: Number(job.completed_chunks),
+    chunk_size: Number(job.chunk_size),
+  };
+}
 
-type JobStatus = (typeof allowedStatuses)[number];
+function serializeChunk(chunk: any) {
+  return {
+    ...chunk,
+    processed: String(chunk.processed),
+    chunk_index: Number(chunk.chunk_index),
+    throughput:
+      chunk.throughput === null ||
+      chunk.throughput === undefined
+        ? null
+        : Number(chunk.throughput),
+  };
+}
 
-const transitions: Record<JobStatus, JobStatus[]> = {
-  queued: ["running", "paused", "stopped"],
-  running: ["paused", "stopped", "completed", "failed"],
+export async function GET(
+  _request: Request,
+  { params }: RouteContext,
+) {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Job ID is required",
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const job = await getJob(id);
+
+    if (!job) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Job not found",
+        },
+        { status: 404 },
+      );
+    }
+
+    const chunks = await getChunksForJob(id);
+
+    const logs = await sql`
+      SELECT
+        id,
+        job_id,
+        chunk_id,
+        level,
+        event,
+        message,
+        details,
+        created_at
+      FROM job_logs
+      WHERE job_id = ${id}
+      ORDER BY created_at DESC
+      LIMIT 100
+    `;
+
+    return NextResponse.json({
+      ok: true,
+      job: serializeJob(job),
+      chunks: chunks.map(serializeChunk),
+      logs,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+interface PatchBody {
+  status?: JobStatus;
+  stopReason?: string | null;
+  error?: string | null;
+  checkpoint?: string | null;
+}
+
+const allowedTransitions: Record<
+  JobStatus,
+  JobStatus[]
+> = {
+  queued: ["running", "stopped"],
+  running: ["paused", "completed", "failed", "stopped"],
   paused: ["running", "stopped"],
   completed: [],
   failed: [],
   stopped: [],
 };
 
-export async function GET(
-  _request: NextRequest,
-  context: RouteContext
+export async function PATCH(
+  request: Request,
+  { params }: RouteContext,
 ) {
-  try {
-    const { id } = await context.params;
+  const { id } = await params;
 
-    const job = await getJob(id);
-
-    if (!job) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Job not found",
-        },
-        { status: 404 }
-      );
-    }
-
-    /*
-     * Return the individual chunks so the dashboard can show
-     * exactly which range each processed chunk covered.
-     */
-    const chunkRows = await sql`
-      SELECT
-        id,
-        job_id,
-        chunk_index,
-        range_start,
-        range_end,
-        status,
-        processed,
-        worker_id,
-        started_at,
-        completed_at,
-        last_checkpoint,
-        throughput,
-        error,
-        created_at
-      FROM chunks
-      WHERE job_id = ${id}
-      ORDER BY chunk_index ASC
-      LIMIT 1000
-    `;
-
-    const chunks = chunkRows.map((row) => ({
-      id: String(row.id),
-      job_id: String(row.job_id),
-      chunk_index: Number(row.chunk_index),
-      range_start: String(row.range_start),
-      range_end: String(row.range_end),
-      status: String(row.status),
-      processed: Number(row.processed ?? 0),
-      worker_id: row.worker_id
-        ? String(row.worker_id)
-        : null,
-      started_at: row.started_at
-        ? new Date(row.started_at as string).toISOString()
-        : null,
-      completed_at: row.completed_at
-        ? new Date(row.completed_at as string).toISOString()
-        : null,
-      last_checkpoint: row.last_checkpoint
-        ? String(row.last_checkpoint)
-        : null,
-      throughput:
-        row.throughput === null ||
-        row.throughput === undefined
-          ? null
-          : Number(row.throughput),
-      error: row.error
-        ? String(row.error)
-        : null,
-      created_at: new Date(
-        row.created_at as string
-      ).toISOString(),
-    }));
-
-    const logs = await getJobLogs(id, 100);
-
-    return NextResponse.json({
-      ok: true,
-      job,
-      chunks,
-      logs,
-    });
-  } catch (error) {
-    console.error("Failed to get job:", error);
-
+  if (!id) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get job",
+        error: "Job ID is required",
       },
-      { status: 500 }
+      { status: 400 },
     );
   }
-}
 
-export async function PATCH(
-  request: NextRequest,
-  context: RouteContext
-) {
+  let body: PatchBody;
+
   try {
-    const { id } = await context.params;
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Request body must be valid JSON",
+      },
+      { status: 400 },
+    );
+  }
 
-    const body = await request.json();
-    const requestedStatus = body?.status;
+  if (!body.status) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "status is required",
+      },
+      { status: 400 },
+    );
+  }
 
-    if (
-      typeof requestedStatus !== "string" ||
-      !allowedStatuses.includes(
-        requestedStatus as JobStatus
-      )
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Invalid job status",
-        },
-        { status: 400 }
-      );
-    }
+  const currentJob = await getJob(id);
 
-    const job = await getJob(id);
+  if (!currentJob) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Job not found",
+      },
+      { status: 404 },
+    );
+  }
+
+  const allowed = allowedTransitions[currentJob.status];
+
+  if (!allowed.includes(body.status)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Cannot change job status from ${currentJob.status} to ${body.status}`,
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    const job = await updateJobStatus(id, body.status, {
+      stopReason: body.stopReason,
+      error: body.error,
+      checkpoint: body.checkpoint,
+    });
 
     if (!job) {
       return NextResponse.json(
@@ -162,64 +198,26 @@ export async function PATCH(
           ok: false,
           error: "Job not found",
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
-
-    const currentStatus =
-      job.status as JobStatus;
-
-    const nextStatus =
-      requestedStatus as JobStatus;
-
-    if (currentStatus === nextStatus) {
-      return NextResponse.json({
-        ok: true,
-        job,
-      });
-    }
-
-    if (
-      !transitions[currentStatus].includes(
-        nextStatus
-      )
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            `Invalid status transition: ` +
-            `${currentStatus} → ${nextStatus}`,
-        },
-        { status: 409 }
-      );
-    }
-
-    const updatedJob =
-      await updateJobStatus(
-        id,
-        nextStatus
-      );
 
     return NextResponse.json({
       ok: true,
-      job: updatedJob,
+      job: serializeJob(job),
     });
   } catch (error) {
-    console.error(
-      "Failed to update job:",
-      error
-    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
 
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update job",
+        error: message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
