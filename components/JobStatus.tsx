@@ -61,9 +61,7 @@ interface JobStatusProps {
 
 function formatNumber(value: number | string): string {
   try {
-    return new Intl.NumberFormat("en-US").format(
-      BigInt(value)
-    );
+    return new Intl.NumberFormat("en-US").format(BigInt(value));
   } catch {
     return String(value);
   }
@@ -92,7 +90,7 @@ function getProgress(job: Job): number {
 
   return Math.min(
     100,
-    (job.completed_chunks / job.total_chunks) * 100
+    (job.completed_chunks / job.total_chunks) * 100,
   );
 }
 
@@ -151,15 +149,14 @@ export default function JobStatus({
         `/api/jobs/${jobId}`,
         {
           cache: "no-store",
-        }
+        },
       );
 
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error ??
-            "Failed to load job"
+          result.error ?? "Failed to load job",
         );
       }
 
@@ -169,7 +166,7 @@ export default function JobStatus({
       setError(
         err instanceof Error
           ? err.message
-          : String(err)
+          : String(err),
       );
     } finally {
       setLoading(false);
@@ -182,7 +179,7 @@ export default function JobStatus({
     const interval =
       window.setInterval(
         loadJob,
-        5000
+        5000,
       );
 
     return () => {
@@ -191,7 +188,7 @@ export default function JobStatus({
   }, [loadJob]);
 
   async function changeStatus(
-    status: "paused" | "stopped"
+    status: "paused" | "stopped",
   ) {
     if (actionLoading) {
       return;
@@ -200,13 +197,15 @@ export default function JobStatus({
     setActionLoading(true);
 
     try {
-      const reason =
-        status === "stopped"
-          ? window.prompt(
-              "Reason for stopping this job:",
-              "Stopped by user"
-            ) ?? "Stopped by user"
-          : undefined;
+      let stopReason: string | undefined;
+
+      if (status === "stopped") {
+        stopReason =
+          window.prompt(
+            "Reason for stopping this job:",
+            "Stopped by user",
+          ) ?? "Stopped by user";
+      }
 
       const response = await fetch(
         `/api/jobs/${jobId}`,
@@ -218,9 +217,9 @@ export default function JobStatus({
           },
           body: JSON.stringify({
             status,
-            reason,
+            stopReason,
           }),
-        }
+        },
       );
 
       const result =
@@ -229,7 +228,7 @@ export default function JobStatus({
       if (!response.ok) {
         throw new Error(
           result.error ??
-            "Failed to update job"
+            "Failed to update job",
         );
       }
 
@@ -238,7 +237,7 @@ export default function JobStatus({
       window.alert(
         err instanceof Error
           ? err.message
-          : String(err)
+          : String(err),
       );
     } finally {
       setActionLoading(false);
@@ -276,7 +275,7 @@ export default function JobStatus({
   const {
     job,
     chunks = [],
-    logs,
+    logs = [],
   } = data;
 
   const progress =
@@ -294,7 +293,7 @@ export default function JobStatus({
   const completedChunks =
     chunks.filter(
       (chunk) =>
-        chunk.status === "completed"
+        chunk.status === "completed",
     );
 
   return (
@@ -310,7 +309,7 @@ export default function JobStatus({
 
         <span
           className={statusClass(
-            job.status
+            job.status,
           )}
         >
           {job.status}
@@ -336,11 +335,11 @@ export default function JobStatus({
 
           <span>
             {formatNumber(
-              job.completed_chunks
+              job.completed_chunks,
             )}{" "}
             /{" "}
             {formatNumber(
-              job.total_chunks
+              job.total_chunks,
             )}{" "}
             chunks
           </span>
@@ -352,7 +351,7 @@ export default function JobStatus({
 
             <strong>
               {formatNumber(
-                job.processed
+                job.processed,
               )}
             </strong>
           </div>
@@ -362,7 +361,7 @@ export default function JobStatus({
 
             <strong>
               {formatNumber(
-                job.chunk_size
+                job.chunk_size,
               )}
             </strong>
           </div>
@@ -382,7 +381,7 @@ export default function JobStatus({
 
             <strong>
               {formatNumber(
-                completedChunks.length
+                completedChunks.length,
               )}
             </strong>
           </div>
@@ -398,7 +397,7 @@ export default function JobStatus({
 
             <code>
               {formatRange(
-                job.range_start
+                job.range_start,
               )}
             </code>
           </div>
@@ -408,7 +407,7 @@ export default function JobStatus({
 
             <code>
               {formatRange(
-                job.range_end
+                job.range_end,
               )}
             </code>
           </div>
@@ -455,7 +454,7 @@ export default function JobStatus({
 
                     <span
                       className={chunkStatusClass(
-                        chunk.status
+                        chunk.status,
                       )}
                     >
                       {chunk.status}
@@ -464,7 +463,7 @@ export default function JobStatus({
 
                   <span className="chunk-processed">
                     {formatNumber(
-                      chunk.processed
+                      chunk.processed,
                     )}{" "}
                     processed
                   </span>
@@ -477,7 +476,7 @@ export default function JobStatus({
 
                   <code>
                     {formatRange(
-                      chunk.range_start
+                      chunk.range_start,
                     )}
                   </code>
 
@@ -487,7 +486,7 @@ export default function JobStatus({
 
                   <code>
                     {formatRange(
-                      chunk.range_end
+                      chunk.range_end,
                     )}
                   </code>
                 </div>
@@ -501,7 +500,7 @@ export default function JobStatus({
                     <code>
                       {chunk.last_checkpoint
                         ? formatRange(
-                            chunk.last_checkpoint
+                            chunk.last_checkpoint,
                           )
                         : "—"}
                     </code>
@@ -525,7 +524,7 @@ export default function JobStatus({
                       {chunk.throughput !==
                       null
                         ? `${formatNumber(
-                            chunk.throughput
+                            chunk.throughput,
                           )} ops/s`
                         : "—"}
                     </strong>
@@ -536,7 +535,7 @@ export default function JobStatus({
 
                     <strong>
                       {formatDate(
-                        chunk.started_at
+                        chunk.started_at,
                       )}
                     </strong>
                   </div>
@@ -548,7 +547,7 @@ export default function JobStatus({
 
                     <strong>
                       {formatDate(
-                        chunk.completed_at
+                        chunk.completed_at,
                       )}
                     </strong>
                   </div>
@@ -579,7 +578,7 @@ export default function JobStatus({
 
             <strong>
               {formatDate(
-                job.created_at
+                job.created_at,
               )}
             </strong>
           </div>
@@ -589,7 +588,7 @@ export default function JobStatus({
 
             <strong>
               {formatDate(
-                job.started_at
+                job.started_at,
               )}
             </strong>
           </div>
@@ -599,7 +598,7 @@ export default function JobStatus({
 
             <strong>
               {formatDate(
-                job.updated_at
+                job.updated_at,
               )}
             </strong>
           </div>
@@ -609,7 +608,7 @@ export default function JobStatus({
 
             <strong>
               {formatDate(
-                job.finished_at
+                job.finished_at,
               )}
             </strong>
           </div>
@@ -671,8 +670,7 @@ export default function JobStatus({
           </button>
         </div>
 
-        {job.status ===
-          "paused" && (
+        {job.status === "paused" && (
           <p className="hint">
             The job is paused.
           </p>
@@ -710,7 +708,7 @@ export default function JobStatus({
 
                   <time>
                     {formatDate(
-                      log.created_at
+                      log.created_at,
                     )}
                   </time>
                 </div>
@@ -722,13 +720,13 @@ export default function JobStatus({
                 )}
 
                 {Object.keys(
-                  log.details ?? {}
+                  log.details ?? {},
                 ).length > 0 && (
                   <pre>
                     {JSON.stringify(
                       log.details,
                       null,
-                      2
+                      2,
                     )}
                   </pre>
                 )}
