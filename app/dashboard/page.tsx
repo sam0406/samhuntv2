@@ -14,7 +14,7 @@ export default function DashboardPage() {
         </div>
 
         <Link
-          href="/"
+          href="/create-job"
           className="button-link"
         >
           Create Job
