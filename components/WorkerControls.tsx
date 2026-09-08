@@ -2,19 +2,34 @@
 
 import { useState } from "react";
 
+interface WorkerResult {
+  workerId?: string;
+  processed?: number;
+  completedChunks?: number;
+  totalChunks?: number;
+  status?: string;
+  message?: string;
+}
+
 interface WorkerControlsProps {
   jobId: string;
 }
 
 export default function WorkerControls({
-  jobId
+  jobId,
 }: WorkerControlsProps) {
   const [running, setRunning] = useState(false);
-  const [message, setMessage] = useState("");
+  const [result, setResult] =
+    useState<WorkerResult | null>(null);
+  const [error, setError] =
+    useState<string | null>(null);
 
   async function startWorker() {
+    if (running) return;
+
     setRunning(true);
-    setMessage("");
+    setError(null);
+    setResult(null);
 
     try {
       const response = await fetch(
@@ -22,12 +37,9 @@ export default function WorkerControls({
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            operationsPerStep: 1000,
-            maxSteps: 100
-          })
+          body: JSON.stringify({}),
         }
       );
 
@@ -35,18 +47,18 @@ export default function WorkerControls({
 
       if (!response.ok) {
         throw new Error(
-          data.error ?? "Worker failed"
+          data.error ?? "Worker failed to start"
         );
       }
 
-      setMessage(
-        `Worker completed ${data.worker.chunksProcessed} chunk(s) and processed ${data.worker.operations} operations.`
+      setResult(
+        data.result ?? data.worker ?? data
       );
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Worker failed"
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : String(err)
       );
     } finally {
       setRunning(false);
@@ -54,33 +66,70 @@ export default function WorkerControls({
   }
 
   return (
-    <section
-      style={{
-        marginTop: 25,
-        padding: 20,
-        border: "1px solid #ccc",
-        borderRadius: 8
-      }}
-    >
+    <section className="job-card">
       <h2>Worker</h2>
 
+      <p className="section-description">
+        Run a benchmark worker for this job.
+      </p>
+
       <button
+        type="button"
         onClick={startWorker}
         disabled={running}
-        style={{
-          padding: "12px 18px",
-          cursor: running ? "wait" : "pointer"
-        }}
       >
         {running
-          ? "Worker running..."
-          : "Run Worker"}
+          ? "Worker running…"
+          : "Start Worker"}
       </button>
 
-      {message && (
-        <p style={{ marginTop: 15 }}>
-          {message}
-        </p>
+      {error && (
+        <div className="error-box">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div className="worker-result">
+          <h3>Worker Result</h3>
+
+          {result.workerId && (
+            <p>
+              <strong>Worker:</strong>{" "}
+              {result.workerId}
+            </p>
+          )}
+
+          {result.status && (
+            <p>
+              <strong>Status:</strong>{" "}
+              {result.status}
+            </p>
+          )}
+
+          {typeof result.processed ===
+            "number" && (
+            <p>
+              <strong>Processed:</strong>{" "}
+              {result.processed.toLocaleString()}
+            </p>
+          )}
+
+          {typeof result.completedChunks ===
+            "number" &&
+            typeof result.totalChunks ===
+              "number" && (
+              <p>
+                <strong>Chunks:</strong>{" "}
+                {result.completedChunks} /{" "}
+                {result.totalChunks}
+              </p>
+            )}
+
+          {result.message && (
+            <p>{result.message}</p>
+          )}
+        </div>
       )}
     </section>
   );
