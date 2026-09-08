@@ -11,7 +11,7 @@ interface Job {
   chunk_size: number;
   total_chunks: number;
   completed_chunks: number;
-  processed: number;
+  processed: string;
   started_at: string | null;
   finished_at: string | null;
   last_checkpoint: string | null;
@@ -28,7 +28,7 @@ interface Chunk {
   range_start: string;
   range_end: string;
   status: string;
-  processed: number;
+  processed: string;
   worker_id: string | null;
   started_at: string | null;
   completed_at: string | null;
@@ -59,8 +59,14 @@ interface JobStatusProps {
   jobId: string;
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US").format(value);
+function formatNumber(value: number | string): string {
+  try {
+    return new Intl.NumberFormat("en-US").format(
+      BigInt(value)
+    );
+  } catch {
+    return String(value);
+  }
 }
 
 function formatDate(value: string | null): string {
@@ -180,9 +186,7 @@ export default function JobStatus({
       );
 
     return () => {
-      window.clearInterval(
-        interval
-      );
+      window.clearInterval(interval);
     };
   }, [loadJob]);
 
@@ -344,9 +348,7 @@ export default function JobStatus({
 
         <div className="stats-grid">
           <div className="stat">
-            <span>
-              Processed
-            </span>
+            <span>Processed</span>
 
             <strong>
               {formatNumber(
@@ -356,9 +358,7 @@ export default function JobStatus({
           </div>
 
           <div className="stat">
-            <span>
-              Chunk size
-            </span>
+            <span>Chunk size</span>
 
             <strong>
               {formatNumber(
@@ -368,9 +368,7 @@ export default function JobStatus({
           </div>
 
           <div className="stat">
-            <span>
-              Puzzle
-            </span>
+            <span>Puzzle</span>
 
             <strong>
               {job.puzzle_id ?? "—"}
@@ -425,8 +423,8 @@ export default function JobStatus({
             </h2>
 
             <p className="section-description">
-              Exact ranges tested by each
-              chunk.
+              Exact ranges tested by
+              each chunk.
             </p>
           </div>
 
@@ -438,8 +436,8 @@ export default function JobStatus({
 
         {chunks.length === 0 ? (
           <p>
-            No chunks have been created
-            yet.
+            No chunks have been
+            created yet.
           </p>
         ) : (
           <div className="chunk-list">
@@ -510,9 +508,7 @@ export default function JobStatus({
                   </div>
 
                   <div>
-                    <span>
-                      Worker
-                    </span>
+                    <span>Worker</span>
 
                     <code>
                       {chunk.worker_id ??
@@ -536,9 +532,7 @@ export default function JobStatus({
                   </div>
 
                   <div>
-                    <span>
-                      Started
-                    </span>
+                    <span>Started</span>
 
                     <strong>
                       {formatDate(
@@ -655,9 +649,7 @@ export default function JobStatus({
               !canPause
             }
             onClick={() =>
-              changeStatus(
-                "paused"
-              )
+              changeStatus("paused")
             }
           >
             {actionLoading
@@ -672,9 +664,7 @@ export default function JobStatus({
               !canStop
             }
             onClick={() =>
-              changeStatus(
-                "stopped"
-              )
+              changeStatus("stopped")
             }
           >
             Stop
@@ -691,9 +681,7 @@ export default function JobStatus({
 
       <section className="job-card">
         <div className="section-header">
-          <h2>
-            Recent Logs
-          </h2>
+          <h2>Recent Logs</h2>
 
           <span>
             {logs.length} events
@@ -701,9 +689,7 @@ export default function JobStatus({
         </div>
 
         {logs.length === 0 ? (
-          <p>
-            No logs yet.
-          </p>
+          <p>No logs yet.</p>
         ) : (
           <div className="logs">
             {logs.map((log) => (
@@ -751,371 +737,6 @@ export default function JobStatus({
           </div>
         )}
       </section>
-
-      <style jsx>{`
-        .job-status {
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 32px 20px 64px;
-        }
-
-        .job-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 20px;
-          margin-bottom: 24px;
-        }
-
-        .eyebrow {
-          margin: 0 0 6px;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          opacity: 0.65;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 24px;
-          word-break: break-all;
-        }
-
-        h2 {
-          margin: 0 0 18px;
-          font-size: 18px;
-        }
-
-        .status {
-          padding: 7px 12px;
-          border-radius: 999px;
-          background: #eee;
-          font-size: 13px;
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-
-        .status-running {
-          background: #dff6e4;
-        }
-
-        .status-completed {
-          background: #dceeff;
-        }
-
-        .status-failed {
-          background: #ffe0e0;
-        }
-
-        .status-paused {
-          background: #fff0c9;
-        }
-
-        .status-stopped {
-          background: #e5e5e5;
-        }
-
-        .job-card {
-          margin-bottom: 18px;
-          padding: 22px;
-          border: 1px solid #ddd;
-          border-radius: 12px;
-          background: #fff;
-        }
-
-        .progress-container {
-          width: 100%;
-          height: 14px;
-          overflow: hidden;
-          border-radius: 999px;
-          background: #e9e9e9;
-        }
-
-        .progress-bar {
-          height: 100%;
-          background: #111;
-          transition: width 0.4s ease;
-        }
-
-        .progress-row {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 10px;
-          gap: 20px;
-        }
-
-        .stats-grid,
-        .metadata,
-        .range-grid {
-          display: grid;
-          grid-template-columns:
-            repeat(
-              auto-fit,
-              minmax(180px, 1fr)
-            );
-          gap: 16px;
-          margin-top: 22px;
-        }
-
-        .stat,
-        .metadata > div,
-        .range-grid > div {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-        }
-
-        .stat span,
-        .metadata span,
-        .range-grid span,
-        .chunk-details span,
-        .tested-range > span {
-          font-size: 12px;
-          opacity: 0.6;
-        }
-
-        code,
-        pre {
-          font-family:
-            ui-monospace,
-            SFMono-Regular,
-            Menlo,
-            Monaco,
-            Consolas,
-            monospace;
-        }
-
-        code {
-          word-break: break-all;
-        }
-
-        .checkpoint {
-          display: block;
-          padding: 12px;
-          border-radius: 8px;
-          background: #f5f5f5;
-        }
-
-        .section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 15px;
-        }
-
-        .section-header h2 {
-          margin-bottom: 4px;
-        }
-
-        .section-description {
-          margin: 0;
-          font-size: 13px;
-          opacity: 0.6;
-        }
-
-        .chunk-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-top: 20px;
-        }
-
-        .chunk-card {
-          padding: 16px;
-          border: 1px solid #e1e1e1;
-          border-radius: 10px;
-          background: #fafafa;
-        }
-
-        .chunk-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 15px;
-          margin-bottom: 14px;
-        }
-
-        .chunk-header > div {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .chunk-status {
-          padding: 4px 8px;
-          border-radius: 999px;
-          font-size: 10px;
-          font-weight: 700;
-          text-transform: uppercase;
-          background: #eee;
-        }
-
-        .chunk-completed {
-          background: #dff6e4;
-        }
-
-        .chunk-running {
-          background: #dceeff;
-        }
-
-        .chunk-failed {
-          background: #ffe0e0;
-        }
-
-        .chunk-stopped {
-          background: #e5e5e5;
-        }
-
-        .chunk-queued {
-          background: #fff0c9;
-        }
-
-        .chunk-processed {
-          font-size: 12px;
-          opacity: 0.65;
-        }
-
-        .tested-range {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-          padding: 13px;
-          border-radius: 8px;
-          background: #f0f0f0;
-        }
-
-        .tested-range code {
-          font-size: 13px;
-        }
-
-        .range-arrow {
-          font-weight: 700;
-          opacity: 0.55;
-        }
-
-        .chunk-details {
-          display: grid;
-          grid-template-columns:
-            repeat(
-              auto-fit,
-              minmax(170px, 1fr)
-            );
-          gap: 14px;
-          margin-top: 15px;
-        }
-
-        .chunk-details > div {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-          min-width: 0;
-        }
-
-        .chunk-details code {
-          font-size: 12px;
-        }
-
-        .controls {
-          display: flex;
-          gap: 10px;
-        }
-
-        button {
-          border: 0;
-          border-radius: 8px;
-          padding: 10px 18px;
-          cursor: pointer;
-          font-weight: 600;
-        }
-
-        button:disabled {
-          cursor: not-allowed;
-          opacity: 0.45;
-        }
-
-        .hint {
-          margin-bottom: 0;
-          font-size: 13px;
-          opacity: 0.65;
-        }
-
-        .error-box {
-          padding: 12px;
-          border-radius: 8px;
-          background: #ffe5e5;
-          color: #8b0000;
-        }
-
-        .logs {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          margin-top: 18px;
-        }
-
-        .log-entry {
-          padding: 14px;
-          border-radius: 8px;
-          background: #f7f7f7;
-        }
-
-        .log-top {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .log-top time {
-          margin-left: auto;
-          font-size: 12px;
-          opacity: 0.55;
-        }
-
-        .log-level {
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-        }
-
-        .log-error {
-          color: #b00020;
-        }
-
-        .log-warn {
-          color: #8a5a00;
-        }
-
-        pre {
-          margin: 10px 0 0;
-          padding: 10px;
-          overflow-x: auto;
-          border-radius: 6px;
-          background: #eee;
-          font-size: 11px;
-        }
-
-        @media (max-width: 700px) {
-          .job-header,
-          .chunk-header,
-          .section-header,
-          .progress-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .log-top time {
-            margin-left: 0;
-          }
-
-          .tested-range {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-        }
-      `}</style>
     </main>
   );
 }
