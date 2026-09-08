@@ -1,30 +1,46 @@
-import { puzzle69Fixture } from "@/tests/fixtures/puzzle69";
-import type { PuzzleBenchmarkFixture } from "@/tests/fixtures/puzzle69";
+export interface PuzzleFixture {
+  id: number;
+  name: string;
+  description: string;
+  rangeStart: string;
+  rangeEnd: string;
+  benchmark: {
+    expectedCheckpoint: string;
+    expectedOperations: string;
+  };
+}
 
-const fixtures: PuzzleBenchmarkFixture[] = [
-  puzzle69Fixture
+const PUZZLE_FIXTURES: PuzzleFixture[] = [
+  {
+    id: 69,
+    name: "Bitcoin Puzzle 69",
+    description:
+      "Public solved puzzle used as an infrastructure benchmark fixture.",
+    rangeStart: "0x100000000000000000",
+    rangeEnd: "0x1fffffffffffffffff",
+    benchmark: {
+      expectedCheckpoint:
+        "0x100000000000000000",
+      expectedOperations: "1",
+    },
+  },
 ];
 
+export function getPuzzleFixtures(): PuzzleFixture[] {
+  return PUZZLE_FIXTURES.map((puzzle) => ({
+    ...puzzle,
+    benchmark: {
+      ...puzzle.benchmark,
+    },
+  }));
+}
+
 export function getPuzzleFixture(
-  puzzleId: number
-): PuzzleBenchmarkFixture | null {
-  return fixtures.find((puzzle) => puzzle.id === puzzleId) ?? null;
-}
-
-export function listPuzzleFixtures(): PuzzleBenchmarkFixture[] {
-  return [...fixtures];
-}
-
-export function validatePuzzleRange(
-  puzzle: PuzzleBenchmarkFixture,
-  rangeStart: string,
-  rangeEnd: string
-): boolean {
-  const puzzleStart = BigInt(puzzle.rangeStart);
-  const puzzleEnd = BigInt(puzzle.rangeEnd);
-
-  const start = BigInt(rangeStart);
-  const end = BigInt(rangeEnd);
-
-  return start >= puzzleStart && end <= puzzleEnd && start <= end;
+  puzzleId: number,
+): PuzzleFixture | null {
+  return (
+    PUZZLE_FIXTURES.find(
+      (puzzle) => puzzle.id === puzzleId,
+    ) ?? null
+  );
 }
