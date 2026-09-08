@@ -10,6 +10,12 @@ interface CreateJobParams {
   chunkSize: number;
 }
 
+interface UpdateJobStatusOptions {
+  stopReason?: string | null;
+  error?: string | null;
+  checkpoint?: string | null;
+}
+
 function calculateTotalChunks(
   rangeStart: string,
   rangeEnd: string,
@@ -20,34 +26,59 @@ function calculateTotalChunks(
   const size = BigInt(chunkSize);
 
   if (end < start) {
-    throw new Error("rangeEnd must be greater than or equal to rangeStart");
+    throw new Error(
+      "rangeEnd must be greater than or equal to rangeStart"
+    );
   }
 
   if (size <= 0n) {
-    throw new Error("chunkSize must be greater than zero");
+    throw new Error(
+      "chunkSize must be greater than zero"
+    );
   }
 
   const count = end - start + 1n;
-  const chunks = (count + size - 1n) / size;
+  const chunks =
+    (count + size - 1n) / size;
 
-  if (chunks > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("Too many chunks for this job");
+  if (
+    chunks >
+    BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new Error(
+      "Too many chunks for JavaScript number representation"
+    );
   }
 
   return Number(chunks);
+}
+
+function validateProcessedDelta(
+  processedDelta: number | string
+): bigint {
+  const value = BigInt(processedDelta);
+
+  if (value < 0n) {
+    throw new Error(
+      "processedDelta cannot be negative"
+    );
+  }
+
+  return value;
 }
 
 export async function createJob({
   puzzleId = null,
   rangeStart,
   rangeEnd,
-  chunkSize
+  chunkSize,
 }: CreateJobParams): Promise<Job> {
-  const totalChunks = calculateTotalChunks(
-    rangeStart,
-    rangeEnd,
-    chunkSize
-  );
+  const totalChunks =
+    calculateTotalChunks(
+      rangeStart,
+      rangeEnd,
+      chunkSize
+    );
 
   const jobId = randomUUID();
 
@@ -59,7 +90,9 @@ export async function createJob({
       range_start,
       range_end,
       chunk_size,
-      total_chunks
+      total_chunks,
+      completed_chunks,
+      processed
     )
     VALUES (
       ${jobId},
@@ -68,7 +101,9 @@ export async function createJob({
       ${rangeStart},
       ${rangeEnd},
       ${chunkSize},
-      ${totalChunks}
+      ${totalChunks},
+      0,
+      0
     )
     RETURNING
       id,
@@ -94,14 +129,14 @@ export async function createJob({
   await writeLog({
     jobId,
     event: "job_created",
-    message: "Job created",
+    message: "Benchmark job created",
     details: {
       puzzleId,
       rangeStart,
       rangeEnd,
       chunkSize,
-      totalChunks
-    }
+      totalChunks,
+    },
   });
 
   return job;
@@ -133,69 +168,79 @@ export async function getJob(
     LIMIT 1
   `;
 
-  return (rows[0] as Job | undefined) ?? null;
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return rows[0] as Job;
 }
 
 export async function updateJobStatus(
   jobId: string,
   status: JobStatus,
-  options: {
-    stopReason?: string | null;
-    error?: string | null;
-    checkpoint?: string | null;
-  } = {}
+  options: UpdateJobStatusOptions = {}
 ): Promise<Job | null> {
-  const stopReason = options.stopReason ?? null;
-  const error = options.error ?? null;
-  const checkpoint = options.checkpoint ?? null;
+  const stopReason =
+    options.stopReason ?? null;
+
+  const error =
+    options.error ?? null;
+
+  const checkpoint =
+    options.checkpoint ?? null;
 
   const rows = await sql`
     UPDATE jobs
     SET
       status = ${status},
 
-      stop_reason = CASE
-        WHEN ${stopReason}::text IS NOT NULL
-        THEN ${stopReason}::text
-        ELSE stop_reason
-      END,
+      stop_reason =
+        CASE
+          WHEN ${stopReason}::text IS NOT NULL
+            THEN ${stopReason}::text
+          ELSE stop_reason
+        END,
 
-      error = CASE
-        WHEN ${error}::text IS NOT NULL
-        THEN ${error}::text
-        ELSE error
-      END,
+      error =
+        CASE
+          WHEN ${error}::text IS NOT NULL
+            THEN ${error}::text
+          ELSE error
+        END,
 
-      last_checkpoint = CASE
-        WHEN ${checkpoint}::text IS NOT NULL
-        THEN ${checkpoint}::text
-        ELSE last_checkpoint
-      END,
+      last_checkpoint =
+        CASE
+          WHEN ${checkpoint}::text IS NOT NULL
+            THEN ${checkpoint}::text
+          ELSE last_checkpoint
+        END,
 
-      started_at = CASE
-        WHEN ${status} = 'running'
-          AND started_at IS NULL
-        THEN NOW()
-        ELSE started_at
-      END,
+      started_at =
+        CASE
+          WHEN ${status} = 'running'
+            AND started_at IS NULL
+            THEN NOW()
+          ELSE started_at
+        END,
 
-      finished_at = CASE
-        WHEN ${status} IN (
-          'completed',
-          'failed',
-          'stopped'
-        )
-        THEN NOW()
+      finished_at =
+        CASE
+          WHEN ${status} IN (
+            'completed',
+            'failed',
+            'stopped'
+          )
+            THEN NOW()
 
-        WHEN ${status} NOT IN (
-          'completed',
-          'failed',
-          'stopped'
-        )
-        THEN NULL
+          WHEN ${status} NOT IN (
+            'completed',
+            'failed',
+            'stopped'
+          )
+            THEN NULL
 
-        ELSE finished_at
-      END,
+          ELSE finished_at
+        END,
 
       updated_at = NOW()
 
@@ -220,51 +265,52 @@ export async function updateJobStatus(
       updated_at
   `;
 
-  const job =
-    (rows[0] as Job | undefined) ?? null;
-
-  if (job) {
-    await writeLog({
-      jobId,
-      event: "job_status_changed",
-      message: `Job status changed to ${status}`,
-      details: {
-        status,
-        checkpoint,
-        stopReason
-      }
-    });
+  if (rows.length === 0) {
+    return null;
   }
+
+  const job = rows[0] as Job;
+
+  await writeLog({
+    jobId,
+    event: "job_status_changed",
+    message: `Job status changed to ${status}`,
+    details: {
+      status,
+      checkpoint,
+      stopReason,
+      error,
+    },
+  });
 
   return job;
 }
 
 export async function updateJobProgress(
   jobId: string,
-  processedDelta: number,
+  processedDelta: number | string,
   checkpoint?: string | null
 ): Promise<void> {
-  if (
-    !Number.isSafeInteger(processedDelta) ||
-    processedDelta < 0
-  ) {
-    throw new Error(
-      "processedDelta must be a non-negative safe integer"
+  const delta =
+    validateProcessedDelta(
+      processedDelta
     );
-  }
 
-  const checkpointValue = checkpoint ?? null;
+  const checkpointValue =
+    checkpoint ?? null;
 
   await sql`
     UPDATE jobs
     SET
-      processed = processed + ${processedDelta},
+      processed =
+        processed + ${delta},
 
-      last_checkpoint = CASE
-        WHEN ${checkpointValue}::text IS NOT NULL
-        THEN ${checkpointValue}::text
-        ELSE last_checkpoint
-      END,
+      last_checkpoint =
+        CASE
+          WHEN ${checkpointValue}::text IS NOT NULL
+            THEN ${checkpointValue}::text
+          ELSE last_checkpoint
+        END,
 
       updated_at = NOW()
 
