@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { sql } from "@/lib/db";
-import type { Chunk, ChunkStatus } from "@/lib/types";
+import type { Chunk } from "@/lib/types";
 import { writeLog } from "@/lib/logger";
 
 interface CreateChunksParams {
@@ -196,27 +196,70 @@ export async function claimNextChunk(
   return chunk;
 }
 
-export async function updateChunkProgress(
+/**
+ * Atomically update both the chunk and its parent job.
+ *
+ * This prevents the following failure mode:
+ *
+ *   chunk progress succeeds
+ *   job progress fails
+ *   worker retries
+ *   job progress gets counted twice
+ *
+ * Both counters and checkpoints are updated by one SQL statement.
+ */
+export async function updateProgressAtomically(
   chunkId: string,
+  workerId: string,
   processedDelta: number | string,
   checkpoint: string,
   throughput?: number | null,
 ): Promise<void> {
   const delta = BigInt(processedDelta);
 
-  if (delta < 0n) {
-    throw new Error("processedDelta cannot be negative");
+  if (delta <= 0n) {
+    throw new Error("processedDelta must be greater than zero");
   }
 
-  await sql`
-    UPDATE chunks
+  if (!workerId) {
+    throw new Error("workerId is required");
+  }
+
+  const rows = await sql`
+    WITH updated_chunk AS (
+      UPDATE chunks
+      SET
+        processed = processed + ${delta.toString()}::bigint,
+        last_checkpoint = ${checkpoint},
+        throughput = ${throughput ?? null},
+        updated_at = NOW()
+      WHERE
+        id = ${chunkId}
+        AND status = 'running'
+        AND worker_id = ${workerId}
+      RETURNING
+        job_id,
+        processed,
+        last_checkpoint
+    )
+    UPDATE jobs AS j
     SET
-      processed = processed + ${delta.toString()}::bigint,
+      processed = j.processed + ${delta.toString()}::bigint,
       last_checkpoint = ${checkpoint},
-      throughput = ${throughput ?? null},
       updated_at = NOW()
-    WHERE id = ${chunkId}
+    FROM updated_chunk
+    WHERE j.id = updated_chunk.job_id
+    RETURNING
+      j.id AS job_id,
+      j.processed,
+      j.last_checkpoint
   `;
+
+  if (rows.length === 0) {
+    throw new Error(
+      "Progress update rejected: chunk was not running or is no longer owned by this worker",
+    );
+  }
 }
 
 export async function releaseChunk(
